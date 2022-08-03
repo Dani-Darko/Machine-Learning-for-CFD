@@ -175,15 +175,16 @@ def DataSVD(x, stanBC, stanBCname):
         Sigma[:A.shape[1], :A.shape[1]] = diag(s)
     else:
         Sigma[:A.shape[0], :A.shape[0]] = diag(s)
-    # select
+    # select the main modes for the Sigma to transform U into modes x snapshots
     n_elements = modes
     Sigma = Sigma[:, :n_elements]
     VT = VT[:n_elements, :]
-    # transform
+    # New modes x snapshots reduced matrix
     Trin = U.dot(Sigma)
-    # Save the VT data to transform back the matrix into snapshots x DoF
+    # Save the VT reduced data to transform back the matrix into snapshots x DoF
     name = '../SVDdata/'+stanBCname+'/VT_Data.csv'
     np.savetxt(name, VT, delimiter=",")
+    # Standardize the modes x snapshots matrix
     Tr = np.empty(Trin.shape)
     Trsd = np.std(Trin)
     Trmean = np.mean(Trin)
@@ -207,7 +208,8 @@ def DataSVD(x, stanBC, stanBCname):
         indices2.remove(b)
     for t in tT:
         indices2.remove(t)
-
+    
+    # Don't use any of the upper and lower value limits for validation
     split = int(np.floor(validation_split * dataset_size))
     random.shuffle(indices2)
     train_indices, val_indices = indices2[split:], indices2[:split]
@@ -215,7 +217,8 @@ def DataSVD(x, stanBC, stanBCname):
         train_indices.append(b)
     for t in tT:
         train_indices.append(t)
-
+    
+    # Create the validation and training datasets for the SVD, DoF and RBF
     x_train = torch.from_numpy(np.float32(x[train_indices]))
     x_valid = torch.from_numpy(np.float32(x[val_indices]))
     stanBC_train = stanBC[train_indices,:]
@@ -232,6 +235,7 @@ def UpdateParametersSVD(stanBCname, epochs, modes, x_train, x_valid, Tr_train, T
     D_in = 2
     D_out = modes
     
+    # call for the SVD network module
     network = NNmodules.NNSVD(hidden_sizes, D_in, D_out)
     # Create the optimizer
     # Adagrad (not so good)
@@ -247,15 +251,16 @@ def UpdateParametersSVD(stanBCname, epochs, modes, x_train, x_valid, Tr_train, T
     #     {'params': network2.parameters()}])
     optimizer = optim.Rprop(network.parameters())
     
+    # loss function is mean squared error
     loss_fn = torch.nn.MSELoss()
     
-    stop_criteria = 0.000000001
+    stop_criteria = 0.0000000001
     LOSS = []
     LOSSval = []
-    # Checkpoint
+    # Checkpoint name for the new neural network
     checkpoint_path='../SVDdata/'+stanBCname+'/SVD-outData-NN.pt'
     checkpoint={'epoch':None,'model_state_dict':None ,'optimizer_state_dict':None ,'loss': None, 'lossv': None}
-    # Decoupled NNs, 2 NN
+    # Start the training feedforward/backpropagation loop
     for epoch in range(epochs):
         yhat1 = network(x_train)
         loss1 = loss_fn(yhat1, Tr_train)
@@ -269,6 +274,7 @@ def UpdateParametersSVD(stanBCname, epochs, modes, x_train, x_valid, Tr_train, T
         if LOSS[-1] < stop_criteria:
             print('SVD', stanBCname, ' NN minimal loss criteria has been reached within epoch', epoch)
             break
+    # Save the checkpoint into a file to use in the future within the inverse problem
     checkpoint['epoch']=epochs
     checkpoint['network_state_dict']=network.state_dict()
     checkpoint['optimizer_state_dict']= optimizer.state_dict()
@@ -282,6 +288,7 @@ def UpdateParametersDoF(stanBCname, epochs, x_train, x_valid, stanBC_train, stan
     D_in = 2
     D_out = len(stanBC_train[0,:])
     
+    # call for the DoF network module
     network = NNmodules.NNDoF(hidden_sizes, D_in, D_out)
     # Create the optimizer
     # Adagrad (not so good)
@@ -297,13 +304,15 @@ def UpdateParametersDoF(stanBCname, epochs, x_train, x_valid, stanBC_train, stan
     #     {'params': network2.parameters()}])
     optimizer = optim.Rprop(network.parameters())
     
+    # loss function is mean squared error
     loss_fn = torch.nn.MSELoss()
     
     stop_criteria = 0.000000001
     LOSS = []
     LOSSval = []
-    # Checkpoint
+    # Checkpoint name for the new neural network
     checkpoint_path='../SVDdata/'+stanBCname+'/DoF-outData-NN.pt'
+    # Start the training feedforward/backpropagation loop
     checkpoint={'epoch':None,'model_state_dict':None ,'optimizer_state_dict':None ,'loss': None, 'lossv': None}
     # Decoupled NNs, 2 NN
     for epoch in range(epochs):
@@ -319,6 +328,7 @@ def UpdateParametersDoF(stanBCname, epochs, x_train, x_valid, stanBC_train, stan
         if LOSS[-1] < stop_criteria:
             print('DoF', stanBCname, ' NN minimal loss criteria has been reached within epoch', epoch)
             break
+    # Save the checkpoint into a file to use in the future within the inverse problem
     checkpoint['epoch']=epochs
     checkpoint['network_state_dict']=network.state_dict()
     checkpoint['optimizer_state_dict']= optimizer.state_dict()
