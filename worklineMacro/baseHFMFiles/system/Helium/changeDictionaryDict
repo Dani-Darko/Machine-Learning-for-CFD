@@ -1,0 +1,394 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2.1.x                                 |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      changeDictionaryDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+boundary
+{
+
+}
+
+U
+{
+    internalField   uniform (1 0 0);
+
+    boundaryField
+    {
+        leftLet
+        {
+            type		codedFixedValue;
+    		value		$internalField;
+    	
+    		name parabolicVelocity;
+    		code
+    		#{
+    			scalar Umax = 1, r = 0.2;
+    			
+    			const fvPatch& boundaryP = patch();
+    			vectorField& field = *this;
+    			
+    			forAll(boundaryP, faceI)
+    			{
+    				field[faceI] = vector( Umax*(1- Foam::pow(boundaryP.Cf()[faceI].y()/r, 2) ),0,0);
+    			}
+    		#};
+    	
+    		codeOptions
+    		#{
+    			-I$(LIB_SRC)/finiteVolume/lnInclude \
+    			-I$(LIB_SRC)/meshTools/lnInclude
+    		#};
+    		
+    		codeInclude
+    		#{
+    			#include "fvCFD.H"
+    			#include <cmath>
+    			#include <iostream>
+    		#};
+        }
+
+        rightLet
+        {
+            type            zeroGradient;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+        
+        "Helium_to_.*"
+        {
+            type            fixedValue;
+            value           uniform (0 0 0);
+        }
+    }
+}
+
+T
+{
+    internalField   uniform 300;
+
+    boundaryField
+    {
+        leftLet
+        {
+            type            fixedValue;
+            value           uniform 300;
+        }
+
+        rightLet
+        {
+            type            zeroGradient;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        "Helium_to_.*"
+        {
+            type            compressible::turbulentTemperatureCoupledBaffleMixed;
+            Tnbr            T;
+            kappaMethod     fluidThermo;
+            kappaName       none;
+            value           uniform 300;
+        }
+    }
+}
+
+epsilon
+{
+    internalField   uniform 139629;
+
+    boundaryField
+    {
+        leftLet
+        {
+            type            inletOutlet;
+            inletValue      $internalField;
+            value           $internalField;
+        }
+
+        rightLet
+        {
+            type            zeroGradient;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        "Helium_to_.*"
+        {
+            type            epsilonWallFunction;
+            value           $internalField;
+        }
+    }
+}
+
+k
+{
+    internalField   uniform 10.25;
+
+    boundaryField
+    {
+        leftLet
+        {
+            type            inletOutlet;
+            inletValue      $internalField;
+            value           $internalField;
+        }
+
+        rightLet
+        {
+            type            zeroGradient;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        "Helium_to_.*"
+        {
+            type            kqRWallFunction;
+            value           $internalField;
+        }
+    }
+}
+
+
+omega
+{
+    internalField   uniform 151228; // 8675=125*69.4/1 ; // 0.011;
+
+    boundaryField
+    {
+        leftLet
+        {
+            type            fixedValue;
+
+//            type            turbulentMixingLengthFrequencyInlet;
+//            mixingLength    1;
+            value           $internalField;
+        }
+
+        rightLet
+        {
+            type            zeroGradient;
+        }
+
+        "Helium_to_.*"
+        {
+            type            omegaWallFunction;
+            blended         true;
+            value           $internalField;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        frontAndBack
+        {
+            type            empty;
+        }
+    }
+}
+
+nut
+{
+    internalField   uniform 0;
+
+    boundaryField
+    {
+    	leftLet
+    	{
+            type            calculated;
+            value           $internalField;
+    	}
+
+    	rightLet
+    	{
+            type            calculated;
+            value           $internalField;
+    	}
+
+    	"Helium_to_.*"
+    	{
+            type            nutUSpaldingWallFunction;
+            value           $internalField;
+    	}
+
+    	bottom
+    	{
+            type            zeroGradient;
+    	}
+
+    	frontAndBack
+    	{
+            type            empty;
+    	}
+    }
+}
+
+p_rgh
+{
+    internalField   uniform 0.0000000001;
+    boundaryField
+    {
+//        ".*"
+//        {
+//            type            fixedFluxPressure;
+//            value           uniform 1.19e7;
+//        }
+        ".*"
+        {
+            type            zeroGradient;
+            value           $internalField;
+        }
+
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        rightLet
+        {
+            type            fixedValue;
+            value           $internalField;
+        }
+        
+//        leftLet
+//        {
+//            type            zeroGradient;
+//            value           uniform 1.19e7;
+//        }
+
+        frontAndBack
+        {
+            type            empty;
+        }
+
+    }
+}
+
+p
+{
+    internalField   uniform  0.0000000001;
+
+    boundaryField
+    {
+       ".*"
+       {
+            type            calculated;
+            value           $internalField;
+        }
+        
+        leftLet
+        {
+            type            zeroGradient;
+            value           $internalField;
+        }
+
+//        leftLet
+//        {
+//            type            calculated;
+//            value           uniform 1.19e7;
+//        }
+        
+        rightLet
+        {
+            type            fixedValue;
+            value           $internalField;
+        }
+    	
+        bottom
+        {
+            type            zeroGradient;
+        }
+
+        frontAndBack
+        {
+            type            empty;
+        }
+    }
+}
+
+alphat
+{
+internalField   uniform 0;
+
+boundaryField
+{
+    "Helium_to_.*"
+    {
+        type            compressible::alphatWallFunction;
+        value           $internalField;
+    }
+    leftLet
+    {
+        type            calculated;
+        value           $internalField;
+    }
+    rightLet
+    {
+        type            calculated;
+        value           $internalField;
+    }
+    bottom
+    {
+        type            zeroGradient;
+    }
+    frontAndBack
+    {
+        type            empty;
+    }
+}
+}
+cellToRegion
+{
+    internalField   uniform 0;
+
+    boundaryField
+    {
+        bottom
+        {
+            type            zeroGradient;
+        }
+        leftLet
+        {
+            type            zeroGradient;
+        }
+        rightLet
+        {
+            type            zeroGradient;
+        }
+        frontAndBack
+        {
+            type            empty;
+        }
+        Helium_to_topWall
+        {
+            type            calculated;
+            value           uniform 0;
+        }
+    }
+}
+
+// ************************************************************************* //

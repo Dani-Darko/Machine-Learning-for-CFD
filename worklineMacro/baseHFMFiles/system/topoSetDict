@@ -1,0 +1,78 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2.1.x                                 |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      topoSetDict;
+}
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+actions
+(
+    // topWall
+    {
+    // Mandatory (inherited) entries
+    name        topWall;
+    type        cellSet;
+    action      new;
+
+    // Mandatory entries
+    source      surfaceToCell;
+    file        "./HeliumRegion.stl";
+    outsidePoints ((0.0001 0.2001 0.05));
+    includeCut      false;
+    includeInside   false;
+    includeOutside  true;
+    nearDistance    1;
+    curvature       100;
+    }
+    {
+        name    topWall;
+        type    cellZoneSet;
+        action  new;
+        source  setToCellZone;
+        sourceInfo
+        {
+            set topWall;
+        }
+    }
+
+    // Helium
+    {
+    // Mandatory (inherited) entries
+    name        Helium;
+    type        cellSet;
+    action      new;
+
+    // Mandatory entries
+    source      surfaceToCell;
+    file        "./HeliumRegion.stl";
+    outsidePoints ((0.0001 0.2001 0.05));
+    includeCut      true;
+    includeInside   false;
+    includeOutside  false;
+    nearDistance    10;
+    curvature       100;
+    }
+    {
+        name    Helium;
+        type    cellZoneSet;
+        action  new;
+        source  setToCellZone;
+        sourceInfo
+        {
+            set Helium;
+        }
+    }
+
+);
+
+// ************************************************************************* //
