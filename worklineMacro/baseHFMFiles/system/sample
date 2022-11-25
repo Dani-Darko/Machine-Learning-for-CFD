@@ -23,7 +23,7 @@ functions
 type sets;
 libs            (sampling);
 
-interpolationScheme cellPointFace;
+interpolationScheme cellPoint;
 
 setFormat       raw;
 
@@ -34,8 +34,8 @@ sets
         // type    face;
         type    uniform;
         axis    y;
-        start   (1.9999 0 0);
-        end     (1.9999 0.2 0);
+        start   (2.1 0 0);
+        end     (2.1 0.2 0);
         nPoints 101;
     }
     inlet
@@ -43,28 +43,63 @@ sets
         // type    face;
         type    uniform;
         axis    y;
-        start   (0.0001 0 0);
-        end     (0.0001 0.2 0);
+        start   (-0.1 0 0);
+        end     (-0.1 0.2 0);
         nPoints 101;
     }
-    symmetry
+    outlet2
     {
         // type    face;
         type    uniform;
-        axis    x;
-        start   (0.0001 0.0001 0);
-        end     (1.9999 0.0001 0);
+        axis    y;
+        start   (2.2 0 0);
+        end     (2.2 0.2 0);
         nPoints 101;
     }
-    wall
+    inlet2
     {
         // type    face;
-        type    cloud;
-        axis    x;
-        points
-        (
-
-        );
+        type    uniform;
+        axis    y;
+        start   (-0.2 0 0);
+        end     (-0.2 0.2 0);
+        nPoints 101;
+    }
+    outlet3
+    {
+        // type    face;
+        type    uniform;
+        axis    y;
+        start   (2.3 0 0);
+        end     (2.3 0.2 0);
+        nPoints 101;
+    }
+    inlet3
+    {
+        // type    face;
+        type    uniform;
+        axis    y;
+        start   (-0.3 0 0);
+        end     (-0.3 0.2 0);
+        nPoints 101;
+    }
+    outlet4
+    {
+        // type    face;
+        type    uniform;
+        axis    y;
+        start   (2.4 0 0);
+        end     (2.4 0.2 0);
+        nPoints 101;
+    }
+    inlet4
+    {
+        // type    face;
+        type    uniform;
+        axis    y;
+        start   (-0.4 0 0);
+        end     (-0.4 0.2 0);
+        nPoints 101;
     }
 );
 

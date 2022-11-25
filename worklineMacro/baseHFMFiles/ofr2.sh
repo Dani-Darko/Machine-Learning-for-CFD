@@ -5,7 +5,7 @@
 # job stderr file
 #SBATCH --error=PipeFlow.err.%a
 # maximum job time in D-HH:MM
-#SBATCH --time=0-10:00
+#SBATCH --time=0-00:10
 # maximum memory megabytes
 #SBATCH --mem-per-cpu=4000
 # run a two tasks

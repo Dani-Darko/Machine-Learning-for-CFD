@@ -29,7 +29,7 @@ deltaT          1;
 
 writeControl    timeStep;
 
-writeInterval   1000;
+writeInterval   100;
 
 purgeWrite      5;
 
@@ -47,28 +47,28 @@ runTimeModifiable true;
 
 functions
 {
-    rho
-  {
-    type     writeRegisteredObject;
-    functionObjectLibs   ("libfunctionObjects.so");
-    objectNames
-    (
-      rho
-    );
-  }
-    divU
-    {
+//    rho
+//  {
+//    type     writeRegisteredObject;
+//    functionObjectLibs   ("libfunctionObjects.so");
+//    objectNames
+//    (
+//      rho
+//    );
+//  }
+//    divU
+//    {
         // Mandatory entries (unmodifiable)
-        type            div;
-        libs            (fieldFunctionObjects);
-
-        // Mandatory (inherited) entry (runtime modifiable)
-        region          Helium;
-        field           U;
-        writePrecision  24;
-        writeControl    timeStep;
-        writeInterval	 1000;
-    }
+//        type            div;
+//        libs            (fieldFunctionObjects);
+//
+//        // Mandatory (inherited) entry (runtime modifiable)
+//        region          Helium;
+//        field           U;
+//        writePrecision  24;
+//        writeControl    timeStep;
+//        writeInterval	 2500;
+//    }
 }
 
 

@@ -73,6 +73,12 @@ U
             type            fixedValue;
             value           uniform (0 0 0);
         }
+        
+        "topWall_.*Ad"
+        {
+            type            fixedValue;
+            value           uniform (0 0 0);
+        }
     }
 }
 
@@ -105,6 +111,16 @@ T
             kappaMethod     fluidThermo;
             kappaName       none;
             value           uniform 300;
+        }
+        
+        topWall_inAd
+        {
+            type            zeroGradient;
+        }
+        
+        topWall_outAd
+        {
+            type            zeroGradient;
         }
     }
 }

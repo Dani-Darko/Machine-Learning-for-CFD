@@ -19,20 +19,14 @@ actions
 (
     // topWall
     {
-    // Mandatory (inherited) entries
-    name        topWall;
-    type        cellSet;
-    action      new;
-
-    // Mandatory entries
-    source      surfaceToCell;
-    file        "./HeliumRegion.stl";
-    outsidePoints ((0.0001 0.2001 0.05));
-    includeCut      false;
-    includeInside   false;
-    includeOutside  true;
-    nearDistance    1;
-    curvature       100;
+        name    topWall;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        sourceInfo
+        {
+            box (-0.5 0.2 0 )(2.5 0.26 0.1);
+        }
     }
     {
         name    topWall;
@@ -47,20 +41,14 @@ actions
 
     // Helium
     {
-    // Mandatory (inherited) entries
-    name        Helium;
-    type        cellSet;
-    action      new;
-
-    // Mandatory entries
-    source      surfaceToCell;
-    file        "./HeliumRegion.stl";
-    outsidePoints ((0.0001 0.2001 0.05));
-    includeCut      true;
-    includeInside   false;
-    includeOutside  false;
-    nearDistance    10;
-    curvature       100;
+        name    Helium;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        sourceInfo
+        {
+            box (-0.5 0 0 )(2.5 0.2 0.1);
+        }
     }
     {
         name    Helium;

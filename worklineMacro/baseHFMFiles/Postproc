@@ -15,5 +15,7 @@ echo "creating files for paraview post-processing"
 echo
 paraFoam -touchAll
 
+rm -rf process*
+
 
 # ----------------------------------------------------------------- end-of-file
