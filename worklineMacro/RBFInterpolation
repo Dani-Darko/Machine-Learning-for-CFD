@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Oct 25 18:43:34 2021
+
+@author: dani
+"""
+
+from scipy.optimize import curve_fit
+import torch
+from torch.autograd import Variable
+import torch.nn.functional as F
+import numpy as np
+import matplotlib.pyplot as plt
+from torch import nn,optim
+from mpl_toolkits import mplot3d
+from mpl_toolkits.mplot3d import Axes3D
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+from torch.utils.data.sampler import SubsetRandomSampler
+import math as mt
+from PIL import Image
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import misc
+from scipy.stats import kde
+import matplotlib as mpl
+import time
+import random
+from numpy import array
+from numpy import diag
+from numpy import zeros
+from scipy.linalg import svd
+from scipy.interpolate import Rbf
+
+#Experimental x and y data points
+path = os.getcwd()
+path = path.replace('\\', '/')
+
+print ("The current working directory is %s" % path)
+
+dat = 200
+
+m5x1 = (823-573)/5
+m10x1 =(823-573)/10
+m25x1 = (823-573)/25
+m5x0 = (96-75)/5
+m10x0 = (96-75)/10
+m25x0 = (96-75)/25
+plt.rcParams["font.family"] = "serif"
+
+x0 = np.arange(75,96,m25x0)
+x1 = np.arange(573,823,m25x1)
+x = np.empty([len(x0)*len(x1),2])
+xin = np.empty(x.shape)
+xsd0 = np.std(x0)
+xsd1 = np.std(x1)
+xmean0 = np.mean(x0)
+xmean1 = np.mean(x1)
+shapes = -1
+for xi in range(0,len(x0),1):
+    for xj in range(0,len(x1),1):
+        shapes = shapes + 1
+        xin[shapes,0] = (x0[xi]-xmean0)/xsd0
+        xin[shapes,1] = (x1[xj]-xmean1)/xsd1
+x[:,0] = xin[:,0]
+x[:,1] = xin[:,1]
+
+#Fitting functions
+def finT(x, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
+    x0 = x[:,0]
+    x1 = x[:,1]
+    hi = np.expand_dims(np.arange(0,0.0060,0.00012), axis=0)
+    return (np.expand_dims(g*np.tanh(h*x0/i)+j*np.tanh(k*x1/l)+p, axis=1).dot(((a*(b + np.tanh((c*hi+d)/e)+f)))) + o).flatten()
+    return
+def fwallT(x, a, b, c, d, e, f, g, h, i, j, k, l):
+    x1 = x[:,1]
+    ww = np.expand_dims(np.arange(0,0.040,0.0004), axis=0)
+    return (np.expand_dims(h*x1+i+j*np.tanh(k*x1), axis=1).dot(a*ww**6+b*ww*5+c*ww**4+d*ww**3+e*ww**2+f*ww+g)+l).flatten()
+    return
+def foutT(x, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q):
+    x1 = x[:,1]
+    hi = np.expand_dims(np.arange(0,0.0060,0.00012), axis=0)
+    return (np.expand_dims(i*x1+j*np.tanh(k*x1/l)+p, axis=1).dot(((a*(b + np.tanh((c*hi+d)/e)+f)))) + o).flatten()
+    return
+
+def finp(x, a, b, c, d, e):
+    x0 = x[:,0]
+    return a*x0**3+b*x0**2+c*x0+d+e*x0**4
+    return
+def foutp(x, a, b, c, d, e):
+    x0 = x[:,0]
+    return a*x0**3+b*x0**2+c*x0+d+e*x0**4
+    return
+
+poptinT = np.loadtxt("inVarT.csv")
+inPredsT = finT(x, *poptinT)
+poptwallT = np.loadtxt("wallVarT.csv")
+wallPredsT = fwallT(x, *poptwallT)
+poptoutT = np.loadtxt("outVarT.csv")
+outPredsT = foutT(x, *poptoutT)
+
+poptinp = np.loadtxt("inVarp.csv")
+inPredsp = finp(x, *poptinp)
+poptoutp = np.loadtxt("outVarp.csv")
+outPredsp = foutp(x, *poptoutp)
+ww = np.arange(0,0.040,0.0004)
+wallPredsp = np.empty(len(ww)*len(inPredsp))
+for i in range(0,len(inPredsp),1):
+    for j in range(0,len(ww),1):
+        wallPredsp[j+100*i] = (outPredsp[i]-inPredsp[i]) * 637.6900316294254 * ww[j]**2 + inPredsp[i]
+
+
+PredsT = np.empty([len(x),200])
+for i in range(0,len(x[:,0]),1):
+    for j in range(0,50,1):
+        PredsT[i,j] = inPredsT[j+50*i]
+        PredsT[i,j+150] = outPredsT[j+50*i]
+for i in range(0,len(x[:,0]),1):
+    for j in range(0,100,1):
+        PredsT[i,j+50] = wallPredsT[j+100*i]
+
+Predsp = np.empty([len(x),200])
+for i in range(0,len(x[:,0]),1):
+    for j in range(0,50,1):
+        Predsp[i,j] = inPredsp[i]
+        Predsp[i,j+150] = outPredsp[i]
+for i in range(0,len(x[:,0]),1):
+    for j in range(0,100,1):
+        Predsp[i,j+50] = wallPredsp[j+100*i]
+
+Tval = torch.from_numpy(np.float32(PredsT))
+pval = torch.from_numpy(np.float32(Predsp))
+# num = 34
+# fig = plt.figure(figsize=[9,8])
+# ax = plt.axes(projection='3d')
+# ax.scatter(w, h, Tval[num,:], marker=6, c='c')
+# plt.xticks(fontsize=10)
+# plt.yticks(fontsize=10)
+
+# fig = plt.figure(figsize=[9,8])
+# ax = plt.axes(projection='3d')
+# ax.scatter(w, h, pval[num,:], marker=6, c='c')
+# plt.xticks(fontsize=10)
+# plt.yticks(fontsize=10)
+
+# Tw_cases = np.arange(10,16,5)
+# u_cases = np.arange(1,5,3)
+Tw_cases = [m5x1, m10x1, m25x1]
+u_cases = [m5x0, m10x0, m25x0]
+outDat = dat
+
+# define the name of the directory to be created
+for iTw in Tw_cases:
+    for iu in u_cases:
+        x1t = np.arange(573,823,iTw)
+        x0t = np.arange(75,96,iu)
+        xtest = np.empty([len(x0t)*len(x1t),2])
+        xt = np.empty(xtest.shape)
+        xsd0t = np.std(x0t)
+        xsd1t = np.std(x1t)
+        xmean0t = np.mean(x0t)
+        xmean1t = np.mean(x1t)
+        shapes = -1
+        for xti in range(0,len(x0t),1):
+            for xtj in range(0,len(x1t),1):
+                shapes = shapes + 1
+                xt[shapes,0] = (x0t[xti]-xmean0t)/xsd0t
+                xt[shapes,1] = (x1t[xtj]-xmean1t)/xsd1t
+        xtest[:,0] = xt[:,0]
+        xtest[:,1] = xt[:,1]
+
+        poptinT = np.loadtxt("inVarT.csv")
+        inPredsT = finT(xtest, *poptinT)
+        poptwallT = np.loadtxt("wallVarT.csv")
+        wallPredsT = fwallT(xtest, *poptwallT)
+        poptoutT = np.loadtxt("outVarT.csv")
+        outPredsT = foutT(xtest, *poptoutT)
+
+        poptinp = np.loadtxt("inVarp.csv")
+        inPredsp = finp(xtest, *poptinp)
+        poptoutp = np.loadtxt("outVarp.csv")
+        outPredsp = foutp(xtest, *poptoutp)
+        ww = np.arange(0,0.040,0.0004)
+        wallPredsp = np.empty(len(ww)*len(inPredsp))
+        for i in range(0,len(inPredsp),1):
+            for j in range(0,len(ww),1):
+                wallPredsp[j+100*i] = (outPredsp[i]-inPredsp[i]) * 637.6900316294254 * ww[j]**2 + inPredsp[i]
+
+
+        PredsT = np.empty([len(xt),200])
+        PredsTout = np.empty([len(xt),50])
+        for i in range(0,len(xt[:,0]),1):
+            for j in range(0,50,1):
+                PredsTout[i,j] = outPredsT[j+50*i]
+        PredsTout = np.flip(PredsTout,1)
+        for i in range(0,len(xt[:,0]),1):
+            for j in range(0,50,1):
+                PredsT[i,j] = inPredsT[j+50*i]
+                PredsT[i,j+150] = PredsTout[i,j]
+        for i in range(0,len(xt[:,0]),1):
+            for j in range(0,100,1):
+                PredsT[i,j+50] = wallPredsT[j+100*i]
+
+        Predsp = np.empty([len(xt),200])
+        for i in range(0,len(xt[:,0]),1):
+            for j in range(0,50,1):
+                Predsp[i,j] = inPredsp[i]
+                Predsp[i,j+150] = outPredsp[i]
+        for i in range(0,len(xt[:,0]),1):
+            for j in range(0,100,1):
+                Predsp[i,j+50] = wallPredsp[j+100*i]
+        
+        
+        Ttest = torch.from_numpy(np.float32(PredsT))
+        ptest = torch.from_numpy(np.float32(Predsp))
+        # PredsTemp = PredsT*Tsd+Tmean
+        # Predspres = Predsp*psd+pmean
+        
+        # shapes = -1
+        # Twshape = np.empty([len(xtest)])
+        # for xci in range(0,len(x0t),1):
+        #     for xcj in range(0,len(x1t),1):
+        #         shapes = shapes + 1
+        #         for mc in range(0,dat,1):
+        #             Twshape[shapes] = x1t[xcj]
+        # shapes = np.arange(0,dat,1)
+        # fig_pathM = 'Temperature-contour-SVD-T-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+        # fig, ax = plt.subplots()
+        # im = ax.contourf(shapes, Twshape, Ttest, cmap='jet')
+        # plt.xticks(fontsize=10)
+        # plt.yticks(fontsize=10)
+        # plt.ylabel("Outer wall T", size=14)
+        # plt.xlabel("DoF", size=14)
+        # plt.colorbar(im)
+        # plt.savefig(fig_pathM, bbox_inches='tight', format='eps')
+        # plt.close()
+        
+        # Xs, YTw = np.meshgrid(shapes, Twshape)
+        # fig_pathM = 'Temperature-3D-SVD-T-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+        # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        # surf = ax.plot_surface(Xs, YTw, Ttest.detach().numpy(), cmap='jet', vmin=-0.5, vmax=0.5)
+        # plt.xticks(fontsize=10)
+        # plt.yticks(fontsize=10)
+        # plt.ylabel("Outer wall T", size=14)
+        # plt.xlabel("DoF", size=14)
+        # fig.colorbar(surf)
+        # plt.savefig(fig_pathM, bbox_inches='tight', format='eps')
+        # plt.close()
+        
+         # define a matrix
+        A = Ttest.detach().numpy()
+        # Singular-value decomposition
+        U, s, VT = svd(A)
+        
+        m = np.arange(0.0, 50.0, 1.0)
+        modes = 5
+        # fig_pathModes = 'Modes-SVD-T-outData-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+        # plt.scatter(m, s[:len(m)])
+        # plt.xticks(fontsize=10)
+        # plt.yticks(fontsize=10)
+        # # plt.title('First 50 modes with ' + str(len(x1t)*len(x0t))+' snapshots')
+        # plt.ylabel("Relative singular value", size=14)
+        # plt.xlabel("Mode", size=14)
+        # plt.yscale('log')
+        # plt.savefig(fig_pathModes, bbox_inches='tight', format='eps')
+        # plt.close()
+        # create m x n Sigma matrix
+        Sigma = zeros((A.shape[0], A.shape[1]))
+        # populate Sigma with n x n diagonal matrix
+        if len(x0t)*len(x1t) > 200:
+            Sigma[:A.shape[1], :A.shape[1]] = diag(s)
+        else:
+            Sigma[:A.shape[0], :A.shape[0]] = diag(s)
+        # select
+        n_elements = modes
+        Sigma = Sigma[:, :n_elements]
+        VT = VT[:n_elements, :]
+        # transform
+        Trin = U.dot(Sigma)
+        B = U.dot(Sigma.dot(VT))
+        name = 'VT-SVD-T-outData-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.csv'
+        np.savetxt(name, VT, delimiter=",")
+        Tr = np.empty(Trin.shape)
+        Trsd = np.std(Trin)
+        Trmean = np.mean(Trin)
+        for tri in range(0,len(Trin),1):
+            for mj in range(0,modes,1):
+                Tr[tri,mj] = (Trin[tri,mj]-Trmean)/Trsd
+        
+        dataset = Ttest
+        batch_size = len(xt[:,1]) * len(xt[:,0]) -1
+        validation_split = .35
+                
+        # Creating data indices for training and validation splits:
+        bT = np.asarray(np.where(xin[:,1] == 573))
+        tT = np.asarray(np.where(xin[:,1] == 823))
+        bT = list(np.squeeze(bT, axis=(0,)))
+        tT = list(np.squeeze(tT, axis=(0,)))
+
+        dataset_size = len(dataset)
+        indices = list(range(dataset_size))
+        indices2 = indices
+        for b in bT:
+            indices2.remove(b)
+        for t in tT:
+            indices2.remove(t)
+
+        split = int(np.floor(validation_split * dataset_size))
+        random.shuffle(indices2)
+        train_indices, val_indices = indices2[split:], indices2[:split]
+        for b in bT:
+            train_indices.append(b)
+        for t in tT:
+            train_indices.append(t)
+
+        x_train = torch.from_numpy(np.float32(xtest[train_indices]))
+        x_valid = torch.from_numpy(np.float32(xtest[val_indices]))
+        T_train = Ttest[train_indices,:]
+        p_train = ptest[train_indices,:]
+        T_valid = Ttest[val_indices,:]
+        p_valid = ptest[val_indices,:]
+        Tr_train = torch.from_numpy(np.float32(Tr[train_indices,:]))
+        Tr_valid = torch.from_numpy(np.float32(Tr[val_indices,:]))
+        y_train = torch.cat([T_train, p_train],1)
+        y_valid = torch.cat([T_valid, p_valid],1)
+        # x_train = torch.from_numpy(np.float32(xtest))
+        # x_valid = torch.from_numpy(np.float32(x))
+        # T_train = torch.from_numpy(np.float32(Ttest))
+        # p_train = torch.from_numpy(np.float32(ptest))
+        # T_valid = torch.from_numpy(np.float32(Tval))
+        # p_valid = torch.from_numpy(np.float32(pval))
+        # y_train = torch.cat([T_train, p_train],1)
+        # y_valid = torch.cat([T_valid, p_valid],1)
+        
+        # radial basis function interpolator instance
+        rbfi1 = Rbf(x_train[:,0], x_train[:,1], Tr_train[:,0], kernel='inverse_multiquadric', epsilon=2)
+        rbfi2 = Rbf(x_train[:,0], x_train[:,1], Tr_train[:,1], kernel='inverse_multiquadric', epsilon=2)
+        rbfi3 = Rbf(x_train[:,0], x_train[:,1], Tr_train[:,2], kernel='inverse_multiquadric', epsilon=2)
+        rbfi4 = Rbf(x_train[:,0], x_train[:,1], Tr_train[:,3], kernel='inverse_multiquadric', epsilon=2)
+        rbfi5 = Rbf(x_train[:,0], x_train[:,1], Tr_train[:,4], kernel='inverse_multiquadric', epsilon=2)
+
+        Tv1 = rbfi1(x_valid[:,0], x_valid[:,1])
+        Tv2 = rbfi2(x_valid[:,0], x_valid[:,1])
+        Tv3 = rbfi3(x_valid[:,0], x_valid[:,1])
+        Tv4 = rbfi4(x_valid[:,0], x_valid[:,1])
+        Tv5 = rbfi5(x_valid[:,0], x_valid[:,1]) # interpolated values
+        
+        Tv = np.empty([len(x_valid),modes])
+        Tv[:,0] = Tv1
+        Tv[:,1] = Tv2
+        Tv[:,2] = Tv3
+        Tv[:,3] = Tv4
+        Tv[:,4] = Tv5
+        
+        # The nn package also contains definitions of popular loss functions; in this
+        # case we will use Mean Squared Error (MSE) as our loss function.
+        loss_fn = torch.nn.MSELoss()
+        
+        
+        yhat = np.empty([len(Tv),modes])
+        for tri in range(0,len(Tv),1):
+            for mj in range(0,modes,1):
+                yhat[tri,mj] = Tv[tri,mj]*Trsd+Trmean
+        
+        TvR = torch.from_numpy(yhat.dot(VT))
+        LOSSval = loss_fn(TvR, T_valid)
+        print('Total singular value vs validation set is ', LOSSval)
+        
+        Tv1 = rbfi1(xtest[:,0], xtest[:,1])
+        Tv2 = rbfi2(xtest[:,0], xtest[:,1])
+        Tv3 = rbfi3(xtest[:,0], xtest[:,1])
+        Tv4 = rbfi4(xtest[:,0], xtest[:,1])
+        Tv5 = rbfi5(xtest[:,0], xtest[:,1]) # interpolated values
+        
+        Tv = np.empty([len(xtest),modes])
+        Tv[:,0] = Tv1
+        Tv[:,1] = Tv2
+        Tv[:,2] = Tv3
+        Tv[:,3] = Tv4
+        Tv[:,4] = Tv5
+        
+        yhat = np.empty([len(Tv),modes])
+        for tri in range(0,len(Tv),1):
+            for mj in range(0,modes,1):
+                yhat[tri,mj] = Tv[tri,mj]*Trsd+Trmean
+        
+        TvR = yhat.dot(VT)
+        
+        j00 = np.where(xtest[:,0] == min(xtest[:,0]))
+        j01 = np.where(xtest[:,0] == max(xtest[:,0]))
+        j10 = np.where(xtest[:,1] == min(xtest[:,1]))
+        j11 = np.where(xtest[:,1] == max(xtest[:,1]))
+        
+        jtot = np.empty(4)
+        jtot[0] = np.intersect1d(j00,j10)
+        jtot[1] = np.intersect1d(j01,j10)
+        jtot[2] = np.intersect1d(j00,j11)
+        jtot[3] = np.intersect1d(j01,j11)
+        
+        jint = 0
+        for j in jtot:
+            jint = jint + 1
+            j = int(j)
+            fig_pathT = 'Temperature-' + str(jint) + '-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+            plt.plot(Ttest[j,:])
+            plt.plot(TvR[j,:])
+            plt.legend(['Closed form interpolant', 'Kernel interpolation prediction'], loc='upper right', fontsize=12)
+            plt.xticks(fontsize=10)
+            plt.yticks(fontsize=10)
+            plt.xlabel("Degrees of Freedom", size=14)
+            plt.ylabel("Normalized temperature", size=14)
+            plt.savefig(fig_pathT, bbox_inches='tight', format='eps')
+            plt.close()
+            # fig_pathT = 'Modes-' + str(jint) + '-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+            # plt.plot(Tr[j,:])
+            # plt.plot(Tv[j,:])
+            # plt.legend(['Closed form interpolant', 'Kernel interpolation prediction'], loc='upper right', fontsize=12)
+            # plt.xticks(fontsize=10)
+            # plt.yticks(fontsize=10)
+            # plt.xlabel("Degrees of Freedom", size=14)
+            # plt.ylabel("Reduced modes", size=14)
+            # plt.savefig(fig_pathT, bbox_inches='tight', format='eps')
+            # plt.close()
+            fig_pathTvsPredsT = 'Temperature-Kernel-Int-' + str(jint) + '-NN-'+str(len(x1t))+'-Tw-'+str(len(x0t))+'-u.eps'
+            TplotDoF = Ttest[j,:] - TvR[j,:]
+            # plt.plot(T[j,:].detach().numpy())
+            plt.plot(abs(TplotDoF))
+            plt.xticks(fontsize=10)
+            plt.yticks(fontsize=10)
+            # plt.title('Temperature degrees of freedom with  ' + str(len(x1t)*len(x0t))+' snapshots')
+            plt.xlabel("Degrees of Freedom", size=14)
+            plt.ylabel("Difference vs benchmark", size=14)
+            plt.yscale('log')
+            plt.savefig(fig_pathTvsPredsT, bbox_inches='tight', format='eps')
+            plt.close()

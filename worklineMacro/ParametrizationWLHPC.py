@@ -20,24 +20,24 @@ L = 2.0
 # Create the Parametrization function for worklineMainV1 to call
 def CoorVals(xElements, L):
     # Input the amount of amplitude and wavelength values as a user
-    AmpLength = int(input("Enter the amount of amplitude values you need: " ))
-    WaveLLength = int(input("Enter the amount of wavelength values you need: " ))
-    # AmpLength = int(sys.argv[1])
-    # WaveLLength = int(sys.argv[2])
+    # AmpLength = int(input("Enter the amount of amplitude values you need: " ))
+    # WaveLLength = int(input("Enter the amount of wavelength values you need: " ))
+    AmpLength = int(sys.argv[1])
+    WaveLLength = int(sys.argv[2])
     AmpArray = []
     print("Enter the Amplitude values: ")
     # Input Amp values till the max amount of Amplitude values is reached
     for i in range(0, AmpLength):
-        Aele = float(input()) # New value
-        # Aele = float(sys.argv[i+3])
+        # Aele = float(input()) # New value
+        Aele = float(sys.argv[i+3])
         print(Aele)
         AmpArray.append(Aele) # Add to list of Amp
     WaveLArray = []
     print("Enter the Wavelength values: ")
     # Input WaveL values till the max amount of Wavelength values is reached
     for i in range(0, WaveLLength):
-        Wele = float(input()) # New value
-        # Wele = float(sys.argv[i+3+AmpLength])
+        # Wele = float(input()) # New value
+        Wele = float(sys.argv[i+3+AmpLength])
         print(Wele)
         WaveLArray.append(Wele) # Add to list of WaveL
     # Transform lists to arrays

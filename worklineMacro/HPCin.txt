@@ -1,0 +1,7 @@
+sshfs -o follow_symlinks s.2115589@sunbird.swansea.ac.uk:/home/s.2115589/ /media/dani/Data/Ubuntufiles/ProperThermoProp/HPCtest
+
+module load anaconda/2020.07
+source activate
+conda env list
+conda activate py38wlMacro
+

@@ -457,7 +457,7 @@ for iTw in range(0,len(Tw_cases)):
                 print('Minimal loss criteria has been reached', epoch)
                 break
         checkpoint['epoch']=epochs
-        checkpoint['network1_state_dict']=network1.state_dict()
+        checkpoint['model_state_dict']=network1.state_dict()
         checkpoint['optimizer_state_dict']= optimizer.state_dict()
         checkpoint['loss']=LOSS
         checkpoint['lossv']=LOSSval

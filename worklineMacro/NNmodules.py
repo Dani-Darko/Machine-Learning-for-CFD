@@ -38,6 +38,8 @@ def NNSVD(hidden_sizes, D_in, D_out):
             a1 = self.sigmoid(a1)
             a1 = self.hidden2(a1)
             a1 = self.sigmoid(a1)
+            a1 = self.hidden2(a1)
+            a1 = self.sigmoid(a1)
             g = self.output(a1)
             
             return g
@@ -68,6 +70,8 @@ def NNDoF(hidden_sizes, D_in, D_out):
         def forward(self, x):
             # Pass the input tensor through each of our operations
             a1 = self.hidden1(x)
+            a1 = self.sigmoid(a1)
+            a1 = self.hidden2(a1)
             a1 = self.sigmoid(a1)
             a1 = self.hidden2(a1)
             a1 = self.sigmoid(a1)

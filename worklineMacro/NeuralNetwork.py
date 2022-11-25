@@ -1,9 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Mon Oct 25 18:43:34 2021
+1. NeuralNetwork.py creates the dataset for training from the /caseDatabase
+    folder and normaizes the data within the def DataDoF(), gets the modes
+    from the dataset to decrease the dimensions of the output tensor within
+    def DataSVD(), creates the def for the DoF(), SVD(), QoI(), RBF() and
+    Kriging() update training and calls for the Neural network class within
+    where is required.
 
-@author: dani
+@author: Daniela Segura
 """
 # Neural networks libraries
 import torch
@@ -23,46 +26,50 @@ import random
 
 import glob
 from scipy.linalg import svd
+import sklearn.preprocessing as pp
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel, Matern, RationalQuadratic, ExpSineSquared
+
+from joblib import dump
 
 # Call for all the subfunctions needed from the rest of the scripts
 import NNmodules
+
+hidden_sizes = 32
  
 def DataDoF(path):
     # Create a list with both old & new data sampling
-    DirList = glob.glob("../caseDatabase/*")
+    DirList1 = glob.glob("../caseDatabase/*")
+    DirList = []
+    for Dir1 in DirList1:
+        if os.path.exists(Dir1 + '/postProcessing'):
+            DirList.append(Dir1)
     print("The amount of available cases is '% s'" % len(DirList))
-    BCList = ['inlet_U.xy', 'outlet_U.xy','inlet_T_p.xy', 'outlet_T_p.xy']
+    BCList = ['inlet2_U.xy', 'outlet4_U.xy','inlet2_T_p.xy', 'outlet4_T_p.xy']
     # Call for the amplitude and wavelength data from each and every case in existance
-    Amp = []
-    WaveL = []
+    AW = []
     for Diri in DirList:
-        AWfile = open(Diri+"/AmpWaveL.txt")
-        AWcont = AWfile.readlines()
-        Ampin = AWcont[0]
-        WaveLin = AWcont[1]
-        AWfile.close()
-        Amp.append(Ampin)
-        WaveL.append(WaveLin)
-    Amp = np.float32(Amp)
-    WaveL = np.float32(WaveL)
-    x = np.empty([len(Amp),2])
-    xin = np.empty([len(Amp),2])
+        AWfile = np.genfromtxt(Diri+'/AmpWaveLNN.txt', delimiter=' ')
+        AW.append(AWfile)
+    print("The amount of available cases is '% s'" % len(DirList))
+    feat = len(AWfile)
+    AW = np.asarray(AW)
+    x = np.empty([len(AW),feat])
+    xin = np.empty([len(AW),feat])
     # Standardize the data for each feature Amp and WaveL
-    xsd0 = np.std(Amp)
-    xsd1 = np.std(WaveL)
-    xmean0 = np.mean(Amp)
-    xmean1 = np.mean(WaveL)
+    xmean = np.empty(feat)
+    xsd = np.empty(feat)
     # Build the matrix of features, in this case its 2 features with Amp x WaveL snapshots
-    for xi in range(0,len(x)):
-        xin[xi,0] = (Amp[xi]-xmean0)/xsd0
-        xin[xi,1] = (WaveL[xi]-xmean1)/xsd1
-    x[:,0] = xin[:,0]
-    x[:,1] = xin[:,1]
+    for xj in range(feat):
+        xmean[xj] = np.mean(AW[:,xj])
+        xsd[xj] = np.std(AW[:,xj])
+        for xi in range(len(AW)):
+            xin[xi,xj] = (AW[xi,xj]-xmean[xj])/xsd[xj]
+    x = xin
     
     # Call for each case data, these files start as lists to append
     inlet = []
     outlet = []
-    wall = []
     invelocity = []
     outvelocity = []
     # wallvelocity = []
@@ -79,15 +86,15 @@ def DataDoF(path):
             # transformed to float
             Varin = Varin.float()
             # Now append the float tensor into the list of each variable & BC
-            if bc == 'inlet_U.xy':
+            if bc == 'inlet2_U.xy':
                 invelocity.append(Varin)
-            elif bc == 'outlet_U.xy':
+            elif bc == 'outlet4_U.xy':
                 outvelocity.append(Varin)
             # elif bc == 'wall_U.xy':
             #     wallvelocity.append(Varin)
-            elif bc == 'inlet_T_p.xy':
+            elif bc == 'inlet2_T_p.xy':
                 inlet.append(Varin)
-            elif bc == 'outlet_T_p.xy':
+            elif bc == 'outlet4_T_p.xy':
                 outlet.append(Varin)
             # elif bc == 'wall_T_p.xy':
             #     wall.append(Varin)
@@ -101,65 +108,42 @@ def DataDoF(path):
     # swall = torch.stack(wall)
     
     print("Standardizing data for the NNs and RBF...")
-    # Built the empty tensor for the standardized data to be built from the variables
-    # by taking the standard deviation and mean values from each tensor
-    stanui = torch.empty(sui[:,:,1].shape)
-    stanuo = torch.empty(suo[:,:,1].shape)
-    # stanuw = torch.empty(suw[:,:,1].shape)
-    stanTi = torch.empty(sin[:,:,1].shape)
-    stanTo = torch.empty(sout[:,:,1].shape)
-    # stanTw = torch.empty(swall[:,:,1].shape)
-    stanpi = torch.empty(sin[:,:,2].shape)
-    stanpo = torch.empty(sout[:,:,2].shape)
-    # stanpw = torch.empty(swall[:,:,2].shape)
     # BCtensorList = [sui[:,:,1], suo[:,:,1], suw[:,:,1], sin[:,:,1], sout[:,:,1], swall[:,:,1], sin[:,:,2], sout[:,:,2], swall[:,:,2]]
     BCtensorList = [sui[:,:,1], suo[:,:,1], sin[:,:,1], sout[:,:,1], sin[:,:,2], sout[:,:,2]]
-    index = 0
-    for bct in BCtensorList:
-        bctensor = bct
-        stdTensor = np.std(bctensor.detach().numpy())
-        meanTensor = np.mean(bctensor.detach().numpy())
+    stdList = np.empty([len(BCtensorList)])
+    meanList = np.empty([len(BCtensorList)])
+    stanBCList = []
+    for bct in range(len(BCtensorList)):
+        # Built the empty tensor for the standardized data to be built from the variables
+        # by taking the standard deviation and mean values from each tensor
+        stan = torch.empty(BCtensorList[bct].shape)
+        stdList[bct] = np.std(BCtensorList[bct].detach().numpy())
+        meanList[bct] = np.mean(BCtensorList[bct].detach().numpy())
+        if stdList[bct] == 0.0:
+            stdList[bct] = 1.0
+            meanList[bct] = 0.0
         # Store the standard deviation and mean values for each BC to calculate
         # later the real variable values
-        stdfile = open("stdData.txt")
-        stdstring = stdfile.readlines()
-        stdfile.close()
-        stdstring[index] = str(stdTensor)
-        stdfile = open("stdData.txt", "w")
-        newstdcont = "".join(stdstring)
-        stdfile.write(newstdcont)
-        stdfile.close()
-        meanfile = open("meanData.txt")
-        meanstring = meanfile.readlines()
-        meanfile.close()
-        meanstring[index] = str(meanTensor)
-        meanfile = open("meanData.txt", "w")
-        newmeancont = "".join(meanstring)
-        meanfile.write(newmeancont)
-        meanfile.close()
-        for i in range(0,len(DirList),1):
-            if index == 0:
-                stanui[i,:] = (sui[i,:,1]-meanTensor)/stdTensor
-            elif index == 1:
-                stanuo[i,:] = (suo[i,:,1]-meanTensor)/stdTensor
-            elif index == 2:
-                stanTi[i,:] = (sin[i,:,1]-meanTensor)/stdTensor
-            elif index == 3:
-                stanTo[i,:] = (sout[i,:,1]-meanTensor)/stdTensor
-            elif index == 4:
-                stanpi[i,:] = (sin[i,:,2]-meanTensor)/stdTensor
-            elif index == 5:
-                stanpo[i,:] = (sout[i,:,2]-meanTensor)/stdTensor
-                
-                
-        index = index + 1
-    stanBCList = [stanui, stanuo, stanTi, stanTo, stanpi, stanpo] # boundary  
+        for i in range(0,len(BCtensorList[bct]),1):
+            stan[i,:] = (BCtensorList[bct][i,:]-meanList[bct])/stdList[bct]
+        stanBCList.append(stan)
+    if os.path.exists("stdData.txt"):
+        os.remove("stdData.txt")
+    stdfile = open("stdData.txt", "a")
+    for line in range(len(stdList)):
+        stdfile.write(str(stdList[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists("meanData.txt"):
+        os.remove("meanData.txt")
+    meanfile = open("meanData.txt", "a")
+    for line in range(len(meanList)):
+        meanfile.write(str(meanList[line]))
+        meanfile.write("\n")
+    meanfile.close()
+    # stanBCList = [stanui, stanuo, stanTi, stanTo, stanpi, stanpo] # boundary  
     stanBCListNames = ["stanui", "stanuo", "stanTi", "stanTo", "stanpi", "stanpo"] # boundary  
-    # for strStanBC in stanBCListNames:
-    #     ParentDir = '/media/dani/Data/Ubuntufiles/ProperThermoProp/SVDdata/'
-    #     NewPath = os.path.join(ParentDir, strStanBC)
-    #     os.mkdir(NewPath)
-    return x, stanBCList, stanBCListNames
+    return x, stanBCList, stanBCListNames, BCtensorList, xsd, xmean, feat
     
     
 def DataSVD(x, stanBC, stanBCname):
@@ -181,19 +165,25 @@ def DataSVD(x, stanBC, stanBCname):
     VT = VT[:n_elements, :]
     # New modes x snapshots reduced matrix
     Trin = U.dot(Sigma)
+    Trsd = np.std(Trin)
+    Trmean = np.mean(Trin)
+    if os.path.exists('../SVDdata/'+stanBCname+'/TrstdmeanData.txt'):
+        os.remove('../SVDdata/'+stanBCname+'/TrstdmeanData.txt')
+    stdfile = open('../SVDdata/'+stanBCname+'/TrstdmeanData.txt', "a")
+    stdfile.write(str(Trsd))
+    stdfile.write("\n")
+    stdfile.write(str(Trmean))
+    stdfile.close()
     # Save the VT reduced data to transform back the matrix into snapshots x DoF
     name = '../SVDdata/'+stanBCname+'/VT_Data.csv'
     np.savetxt(name, VT, delimiter=",")
     # Standardize the modes x snapshots matrix
     Tr = np.empty(Trin.shape)
-    Trsd = np.std(Trin)
-    Trmean = np.mean(Trin)
-    for tri in range(0,len(Trin),1):
-        for mj in range(0,modes,1):
+    for mj in range(0,modes,1):
+        for tri in range(0,len(Trin),1):
             Tr[tri,mj] = (Trin[tri,mj]-Trmean)/Trsd
     
     dataset = stanBC
-    batch_size = len(x[:,1]) * len(x[:,0]) -1
     validation_split = 0.35
     
     # Creating data indices for training and validation splits:
@@ -219,20 +209,21 @@ def DataSVD(x, stanBC, stanBCname):
         train_indices.append(t)
     
     # Create the validation and training datasets for the SVD, DoF and RBF
-    x_train = torch.from_numpy(np.float32(x[train_indices]))
+    x_train = torch.from_numpy(np.float32(x[train_indices,:]))
+    # x_train = torch.from_numpy(np.float32(x[:,:]))
     x_valid = torch.from_numpy(np.float32(x[val_indices]))
     stanBC_train = stanBC[train_indices,:]
+    # stanBC_train = stanBC[:,:]
     stanBC_valid = stanBC[val_indices,:]
     Tr_train = torch.from_numpy(np.float32(Tr[train_indices,:]))
+    # Tr_train = torch.from_numpy(np.float32(Tr[:,:]))
     Tr_valid = torch.from_numpy(np.float32(Tr[val_indices,:]))
     
     return modes, x_train, x_valid, stanBC_train, stanBC_valid, Tr_train, Tr_valid
 
-def UpdateParametersSVD(stanBCname, epochs, modes, x_train, x_valid, Tr_train, Tr_valid):
+def UpdateParametersSVD(D_in, stanBCname, epochs, modes, x_train, x_valid, Tr_train, Tr_valid):
     # N is batch size; D_in is input dimension;
     # H is hidden dimension; D_out is output dimension.
-    hidden_sizes = 32
-    D_in = 2
     D_out = modes
     
     # call for the SVD network module
@@ -276,16 +267,54 @@ def UpdateParametersSVD(stanBCname, epochs, modes, x_train, x_valid, Tr_train, T
             break
     # Save the checkpoint into a file to use in the future within the inverse problem
     checkpoint['epoch']=epochs
-    checkpoint['network_state_dict']=network.state_dict()
+    checkpoint['model_state_dict']=network.state_dict()
     checkpoint['optimizer_state_dict']= optimizer.state_dict()
     checkpoint['loss']=LOSS
     checkpoint['lossv']=LOSSval
     torch.save(checkpoint, checkpoint_path)
     
+    print("Calculate the L2 norm error from each training and validation sets case")
+    L2t = []
+    L2v = []
+    for i in range(len(Tr_train[:,0])):
+        er = np.sqrt(sum((yhat1[i,:] - Tr_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(yhat1[i,:]))
+        L2t.append(l2errnorm)
+    for i in range(len(Tr_valid[:,0])):
+        er = np.sqrt(sum((v[i,:] - Tr_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(v[i,:]))
+        L2v.append(l2errnorm)
+    if os.path.exists('../SVDdata/'+stanBCname+"L2tsvd.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2tsvd.txt")
+    stdfile = open('../SVDdata/'+stanBCname+"L2tsvd.txt", "a")
+    for line in range(len(L2t)):
+        stdfile.write(str(L2t[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists('../SVDdata/'+stanBCname+"L2vsvd.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2vsvd.txt")
+    meanfile = open('../SVDdata/'+stanBCname+"L2vsvd.txt", "a")
+    for line in range(len(L2v)):
+        meanfile.write(str(L2v[line]))
+        meanfile.write("\n")
+    meanfile.close()
     
-def UpdateParametersDoF(stanBCname, epochs, x_train, x_valid, stanBC_train, stanBC_valid):
-    hidden_sizes = 32
-    D_in = 2
+    
+    # fig_pathLOSSSVD = '../SVDdata/'+stanBCname+'/SVDLossPerformance.eps'
+    # plt.plot(LOSS)
+    # plt.plot(LOSSval)
+    # plt.legend(['Training Temp', 'Validation Temp'], loc='upper right', fontsize=12)
+    # plt.xticks(fontsize=10)
+    # plt.yticks(fontsize=10)
+    # plt.grid(color="0.8", linewidth=0.5) 
+    # plt.xlabel("Epoch", size=14)
+    # plt.ylabel("Cost/total loss", size=14)
+    # plt.yscale('log')
+    # plt.savefig(fig_pathLOSSSVD, bbox_inches='tight', format='eps')
+    # plt.close()
+    
+    
+def UpdateParametersDoF(D_in, stanBCname, epochs, x_train, x_valid, stanBC_train, stanBC_valid):
     D_out = len(stanBC_train[0,:])
     
     # call for the DoF network module
@@ -330,13 +359,405 @@ def UpdateParametersDoF(stanBCname, epochs, x_train, x_valid, stanBC_train, stan
             break
     # Save the checkpoint into a file to use in the future within the inverse problem
     checkpoint['epoch']=epochs
-    checkpoint['network_state_dict']=network.state_dict()
+    checkpoint['model_state_dict']=network.state_dict()
     checkpoint['optimizer_state_dict']= optimizer.state_dict()
     checkpoint['loss']=LOSS
     checkpoint['lossv']=LOSSval
     torch.save(checkpoint, checkpoint_path)
     
-def UpdateParametersRBF(stanBCi, modes, x_train, x_valid, Tr_train, Tr_valid):
-    D_out = modes
-    NNmodules.PODRBF()
+    print("Calculate the L2 norm error from each training and validation sets case")
+    L2t = []
+    L2v = []
+    for i in range(len(stanBC_train[:,0])):
+        er = np.sqrt(sum((yhat1[i,:] - stanBC_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(yhat1[i,:]))
+        L2t.append(l2errnorm)
+    for i in range(len(stanBC_valid[:,0])):
+        er = np.sqrt(sum((v[i,:] - stanBC_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(v[i,:]))
+        L2v.append(l2errnorm)
+    if os.path.exists('../SVDdata/'+stanBCname+"L2tdof.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2tdof.txt")
+    stdfile = open('../SVDdata/'+stanBCname+"L2tdof.txt", "a")
+    for line in range(len(L2t)):
+        stdfile.write(str(L2t[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists('../SVDdata/'+stanBCname+"L2vdof.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2vdof.txt")
+    meanfile = open('../SVDdata/'+stanBCname+"L2vdof.txt", "a")
+    for line in range(len(L2v)):
+        meanfile.write(str(L2v[line]))
+        meanfile.write("\n")
+    meanfile.close()
     
+    # fig_pathLOSSSVD = '../SVDdata/'+stanBCname+'/DoFLossPerformance.eps'
+    # plt.plot(LOSS)
+    # plt.plot(LOSSval)
+    # plt.legend(['Training Temp', 'Validation Temp'], loc='upper right', fontsize=12)
+    # plt.xticks(fontsize=10)
+    # plt.yticks(fontsize=10)
+    # plt.grid(color="0.8", linewidth=0.5) 
+    # plt.xlabel("Epoch", size=14)
+    # plt.ylabel("Cost/total loss", size=14)
+    # plt.yscale('log')
+    # plt.savefig(fig_pathLOSSSVD, bbox_inches='tight', format='eps')
+    # plt.close()
+
+def UpdateParametersQoI(D_in, Q, epochs, x, name):
+    Qstd = np.std(Q)
+    Qmean = np.mean(Q)
+    if os.path.exists('../SVDdata/QoI/Q-'+name+'-stdmeanData.txt'):
+        os.remove('../SVDdata/QoI/Q-'+name+'-stdmeanData.txt')
+    stdfile = open('../SVDdata/QoI/Q-'+name+'-stdmeanData.txt', "a")
+    stdfile.write(str(Qstd))
+    stdfile.write("\n")
+    stdfile.write(str(Qmean))
+    stdfile.close()
+    # Standardize the modes x snapshots matrix
+    Qout = np.empty(Q.shape)
+    for i in range(0,len(Q),1):
+        Qout[i] = (Q[i]-Qmean)/Qstd
+    
+    dataset = Qout
+    validation_split = 0.35
+    # Creating data indices for training and validation splits:
+    # bT = np.asarray(np.where(Q == min(Q)))
+    # tT = np.asarray(np.where(Q == max(Q)))
+    # bT = list(np.squeeze(bT, axis=(0,)))
+    # tT = list(np.squeeze(tT, axis=(0,)))
+    dataset_size = len(dataset)
+    indices = list(range(dataset_size))
+    indices2 = indices
+    # for b in bT:
+    #     indices2.remove(b)
+    # for t in tT:
+    #     indices2.remove(t)
+    
+    # Don't use any of the upper and lower value limits for validation
+    split = int(np.floor(validation_split * dataset_size))
+    random.shuffle(indices2)
+    train_indices, val_indices = indices2[split:], indices2[:split]
+    # for b in bT:
+    #     train_indices.append(b)
+    # for t in tT:
+    #     train_indices.append(t)
+    
+    # Create the validation and training datasets for the SVD, DoF and RBF
+    # x_train = torch.from_numpy(np.float32(x[train_indices,:]))
+    x_train = torch.from_numpy(np.float32(x[:,:]))
+    x_valid = torch.from_numpy(np.float32(x[val_indices]))
+    # Q_train = torch.unsqueeze(torch.from_numpy(np.float32(Qout[train_indices])),1)
+    Q_train = torch.unsqueeze(torch.from_numpy(np.float32(Qout[:])),1)
+    Q_valid = torch.unsqueeze(torch.from_numpy(np.float32(Qout[val_indices])),1)
+    # N is batch size; D_in is input dimension;
+    # H is hidden dimension; D_out is output dimension.
+    D_out = 1
+    
+    # call for the SVD network module
+    network = NNmodules.NNSVD(hidden_sizes, D_in, D_out)
+    # Create the optimizer
+    # Adagrad (not so good)
+    # Adam (not so good)
+    # AdamW
+    # Adamax
+    # ASGD (not so good)
+    # RMSprop (not so good)
+    # Rprop (best so far)
+    # SGD (worst so far, requires lr = 0.003)
+    # optimizer = optim.Rprop([
+    #     {'params': network1.parameters()},
+    #     {'params': network2.parameters()}])
+    optimizer = optim.Rprop(network.parameters())
+    
+    # loss function is mean squared error
+    loss_fn = torch.nn.MSELoss()
+    
+    stop_criteria = 0.0000000001
+    LOSS = []
+    LOSSval = []
+    # Checkpoint name for the new neural network
+    checkpoint_path='../SVDdata/QoI/QoI-'+name+'-NN.pt'
+    checkpoint={'epoch':None,'model_state_dict':None ,'optimizer_state_dict':None ,'loss': None, 'lossv': None}
+    # Start the training feedforward/backpropagation loop
+    for epoch in range(epochs):
+        yhat1 = network(x_train)
+        loss1 = loss_fn(yhat1, Q_train)
+        LOSS.append(loss1.item())
+        v = network(x_valid)
+        loss2v = loss_fn(v, Q_valid)
+        LOSSval.append(loss2v.item())
+        optimizer.zero_grad()
+        loss1.backward()
+        optimizer.step()
+        if LOSS[-1] < stop_criteria:
+            print('SVD', name, ' NN minimal loss criteria has been reached within epoch', epoch)
+            break
+    # Save the checkpoint into a file to use in the future within the inverse problem
+    checkpoint['epoch']=epochs
+    checkpoint['model_state_dict']=network.state_dict()
+    checkpoint['optimizer_state_dict']= optimizer.state_dict()
+    checkpoint['loss']=LOSS
+    checkpoint['lossv']=LOSSval
+    torch.save(checkpoint, checkpoint_path)
+    
+    print("Calculate the L2 norm error from each training and validation sets case")
+    L2t = []
+    L2v = []
+    for i in range(len(Q_train[:,0])):
+        er = np.sqrt(sum((yhat1[i,:] - Q_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(yhat1[i,:]))
+        L2t.append(l2errnorm)
+    for i in range(len(Q_valid[:,0])):
+        er = np.sqrt(sum((v[i,:] - Q_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(v[i,:]))
+        L2v.append(l2errnorm)
+    if os.path.exists('../SVDdata/QoI/'+name+"L2tdof.txt"):
+        os.remove('../SVDdata/QoI/'+name+"L2tdof.txt")
+    stdfile = open('../SVDdata/QoI/'+name+"L2tdof.txt", "a")
+    for line in range(len(L2t)):
+        stdfile.write(str(L2t[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists('../SVDdata/QoI/'+name+"L2vdof.txt"):
+        os.remove('../SVDdata/QoI/'+name+"L2vdof.txt")
+    meanfile = open('../SVDdata/QoI/'+name+"L2vdof.txt", "a")
+    for line in range(len(L2v)):
+        meanfile.write(str(L2v[line]))
+        meanfile.write("\n")
+    meanfile.close()
+    
+    # fig_pathLOSSSVD = '../SVDdata/QoI/'+name+'LossPerformance.eps'
+    # plt.plot(LOSS)
+    # plt.plot(LOSSval)
+    # plt.legend(['Training Temp', 'Validation Temp'], loc='upper right', fontsize=12)
+    # plt.xticks(fontsize=10)
+    # plt.yticks(fontsize=10)
+    # plt.grid(color="0.8", linewidth=0.5) 
+    # plt.xlabel("Epoch", size=14)
+    # plt.ylabel("Cost/total loss", size=14)
+    # plt.yscale('log')
+    # plt.savefig(fig_pathLOSSSVD, bbox_inches='tight', format='eps')
+    # plt.close()
+    
+def UpdateParametersRBF(stanBCname, modes, x_train, x_valid, Tr_train, Tr_valid):
+    from scipy.interpolate import RBFInterpolator
+    # radial basis function interpolator instance
+    rbfi1 = RBFInterpolator(x_train, Tr_train, kernel='inverse_multiquadric', epsilon=3)
+    dump(rbfi1, "../SVDdata/"+stanBCname+"/RBF-data.joblib")
+    
+    yhat1 = rbfi1(torch.from_numpy(np.float32(x_train)))
+    v = rbfi1(torch.from_numpy(np.float32(x_train)))
+    print("Calculate the L2 norm error from each training and validation sets case")
+    L2t = []
+    L2v = []
+    for i in range(len(Tr_train[:,0])):
+        er = np.sqrt(sum((yhat1[i,:] - Tr_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(yhat1[i,:]))
+        L2t.append(l2errnorm)
+    for i in range(len(Tr_valid[:,0])):
+        er = np.sqrt(sum((v[i,:] - Tr_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(v[i,:]))
+        L2v.append(l2errnorm)
+    if os.path.exists('../SVDdata/'+stanBCname+"L2trbf.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2trbf.txt")
+    stdfile = open('../SVDdata/'+stanBCname+"L2trbf.txt", "a")
+    for line in range(len(L2t)):
+        stdfile.write(str(L2t[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists('../SVDdata/'+stanBCname+"L2vrbf.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2vrbf.txt")
+    meanfile = open('../SVDdata/'+stanBCname+"L2vrbf.txt", "a")
+    for line in range(len(L2v)):
+        meanfile.write(str(L2v[line]))
+        meanfile.write("\n")
+    meanfile.close()
+    
+    
+def UpdateParametersKriging(stanBCname, modes, x_train, stanBC_train, epochs):
+    # kernel = 1.0 * RBF(length_scale=1.0, length_scale_bounds=(1e-15, 1e5))
+    min_max_scaler = pp.MinMaxScaler()
+    x_train_minmax = min_max_scaler.fit_transform(x_train)
+    kernel = ConstantKernel(0.1, (0.01, 10.0)) * Matern(length_scale=1.0, length_scale_bounds=(1e-80, 1e5), nu=0.5)
+    #  (
+    # DotProduct(sigma_0=1.0, sigma_0_bounds=(0.1, 10.0)) ** 2
+    iter_num = int(epochs/500)
+    gpr = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=iter_num, normalize_y=True, copy_X_train=True, random_state=0)
+    gpr.fit(x_train_minmax, stanBC_train)
+    dump(gpr, "../SVDdata/"+stanBCname+"/GPR-data.joblib")
+    
+    yhat1, Tr_stdt = gpr.predict(x_train, return_std=True)
+    print("Calculate the L2 norm error from each training and validation sets case")
+    L2t = []
+    for i in range(len(stanBC_train[:,0])):
+        er = np.sqrt(sum((yhat1[i,:] - stanBC_train[i,:])**2))
+        l2errnorm = er * np.sqrt(0.2*3.0)/np.sqrt(len(yhat1[i,:]))
+        L2t.append(l2errnorm)
+    if os.path.exists('../SVDdata/'+stanBCname+"L2tkrig.txt"):
+        os.remove('../SVDdata/'+stanBCname+"L2tkrig.txt")
+    stdfile = open('../SVDdata/'+stanBCname+"L2tkrig.txt", "a")
+    for line in range(len(L2t)):
+        stdfile.write(str(L2t[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    
+def DataQoI(x1, path):
+    # Transform the float values of amplitude and wavelength into string to
+    # name the folders
+    BCList = ['inlet2_U.xy', 'outlet4_U.xy','inlet2_T_p.xy', 'outlet4_T_p.xy']
+    # Call for each case data, these files start as lists to append
+    inlet = []
+    outlet = []
+    invelocity = []
+    outvelocity = []
+    # wallvelocity = []
+    # Each case is loaded separately within the loop to append to the total list
+    print("Loading data to plot...")
+    for p in range(len(x1)):
+        for bc in BCList:
+            # Built the path to call for each case
+            Amp = str(x1[p,0]).replace('.', '-') + '_' + str(x1[p,1]).replace('.', '-')
+            WaveL = str(x1[p,2]).replace('.', '-') + '_' + str(x1[p,3]).replace('.', '-')
+            filepath = '../caseDatabase/'+"A"+Amp+"_W"+WaveL+'/postProcessing/sample/Helium/1000/'+bc
+            # Store the current case, BC & variable data in a numpy array,
+            # then transform said array into a tensor for the NN
+            Varin = torch.from_numpy(np.loadtxt(filepath))
+            # The list.append() requires the data type "float", so the tensor is
+            # transformed to float
+            Varin = Varin.float()
+            # Now append the float tensor into the list of each variable & BC
+            if bc == 'inlet2_U.xy':
+                invelocity.append(Varin)
+            elif bc == 'outlet4_U.xy':
+                outvelocity.append(Varin)
+            # elif bc == 'wall_U.xy':
+            #     wallvelocity.append(Varin)
+            elif bc == 'inlet2_T_p.xy':
+                inlet.append(Varin)
+            elif bc == 'outlet4_T_p.xy':
+                outlet.append(Varin)
+            # elif bc == 'wall_T_p.xy':
+            #     wall.append(Varin)
+    # Transform the lists into a matrix of tensors of shape U = snapshots x DoF x coordinate
+    # while TP = snapshots x DoF x coor,T,P location in file
+    sui = torch.stack(invelocity)
+    suo = torch.stack(outvelocity)
+    # suw = torch.stack(wallvelocity)
+    sin = torch.stack(inlet)
+    sout = torch.stack(outlet)
+    # swall = torch.stack(wall)
+    
+    print("Standardizing data for the plots...")
+    # BCtensorList = [sui[:,:,1], suo[:,:,1], suw[:,:,1], sin[:,:,1], sout[:,:,1], swall[:,:,1], sin[:,:,2], sout[:,:,2], swall[:,:,2]]
+    BCtensorList = [sui[:,:,1], suo[:,:,1], sin[:,:,1], sout[:,:,1], sin[:,:,2], sout[:,:,2]]
+    stdList = np.loadtxt('stdData.txt')
+    meanList = np.loadtxt('meanData.txt')
+    stanBCList = []
+    for bct in range(len(BCtensorList)):
+        # Built the empty tensor for the standardized data to be built from the variables
+        # by taking the standard deviation and mean values from each tensor
+        stan = torch.empty(BCtensorList[bct].shape)
+        for i in range(0,len(BCtensorList[bct]),1):
+            stan[i,:] = (BCtensorList[bct][i,:]-meanList[bct])/stdList[bct]
+        stanBCList.append(stan)
+    # stanBCList = [stanui, stanuo, stanTi, stanTo, stanpi, stanpo] # boundary  
+    stanBCListNames = ["stanui", "stanuo", "stanTi", "stanTo", "stanpi", "stanpo"] # boundary  
+    return stanBCList, stanBCListNames, BCtensorList
+
+def DataQoI2(x1, path):
+    # Transform the float values of amplitude and wavelength into string to
+    # name the folders
+    feat = len(x1[0,:])
+    x = np.empty([len(x1),feat])
+    xin = np.empty([len(x1),feat])
+    # Standardize the data for each feature Amp and WaveL
+    xmean = np.empty(feat)
+    xsd = np.empty(feat)
+    # Build the matrix of features, in this case its 2 features with Amp x WaveL snapshots
+    for xj in range(feat):
+        xmean[xj] = np.mean(x1[:,xj])
+        xsd[xj] = np.std(x1[:,xj])
+        for xi in range(len(x1)):
+            xin[xi,xj] = (x1[xi,xj]-xmean[xj])/xsd[xj]
+    x = xin
+    BCList = ['inlet2_U.xy', 'outlet4_U.xy','inlet2_T_p.xy', 'outlet4_T_p.xy']
+    # Call for each case data, these files start as lists to append
+    inlet = []
+    outlet = []
+    invelocity = []
+    outvelocity = []
+    # wallvelocity = []
+    # Each case is loaded separately within the loop to append to the total list
+    print("Loading data to plot...")
+    for p in range(len(x1)):
+        for bc in BCList:
+            # Built the path to call for each case
+            Amp = str(x1[p,0]).replace('.', '-') + '_0-0'
+            WaveL = str(x1[p,1]).replace('.', '-') + '_0-0'
+            filepath = '../caseDatabase/'+"A"+Amp+"_W"+WaveL+'/postProcessing/sample/Helium/1000/'+bc
+            # Store the current case, BC & variable data in a numpy array,
+            # then transform said array into a tensor for the NN
+            Varin = torch.from_numpy(np.loadtxt(filepath))
+            # The list.append() requires the data type "float", so the tensor is
+            # transformed to float
+            Varin = Varin.float()
+            # Now append the float tensor into the list of each variable & BC
+            if bc == 'inlet2_U.xy':
+                invelocity.append(Varin)
+            elif bc == 'outlet4_U.xy':
+                outvelocity.append(Varin)
+            # elif bc == 'wall_U.xy':
+            #     wallvelocity.append(Varin)
+            elif bc == 'inlet2_T_p.xy':
+                inlet.append(Varin)
+            elif bc == 'outlet4_T_p.xy':
+                outlet.append(Varin)
+            # elif bc == 'wall_T_p.xy':
+            #     wall.append(Varin)
+    # Transform the lists into a matrix of tensors of shape U = snapshots x DoF x coordinate
+    # while TP = snapshots x DoF x coor,T,P location in file
+    sui = torch.stack(invelocity)
+    suo = torch.stack(outvelocity)
+    # suw = torch.stack(wallvelocity)
+    sin = torch.stack(inlet)
+    sout = torch.stack(outlet)
+    # swall = torch.stack(wall)
+    
+    print("Standardizing data for the NNs and RBF...")
+    # BCtensorList = [sui[:,:,1], suo[:,:,1], suw[:,:,1], sin[:,:,1], sout[:,:,1], swall[:,:,1], sin[:,:,2], sout[:,:,2], swall[:,:,2]]
+    BCtensorList = [sui[:,:,1], suo[:,:,1], sin[:,:,1], sout[:,:,1], sin[:,:,2], sout[:,:,2]]
+    stdList = np.empty([len(BCtensorList)])
+    meanList = np.empty([len(BCtensorList)])
+    stanBCList = []
+    for bct in range(len(BCtensorList)):
+        # Built the empty tensor for the standardized data to be built from the variables
+        # by taking the standard deviation and mean values from each tensor
+        stan = torch.empty(BCtensorList[bct].shape)
+        stdList[bct] = np.std(BCtensorList[bct].detach().numpy())
+        meanList[bct] = np.mean(BCtensorList[bct].detach().numpy())
+        if stdList[bct] == 0.0:
+            stdList[bct] = 1.0
+            meanList[bct] = 0.0
+        # Store the standard deviation and mean values for each BC to calculate
+        # later the real variable values
+        for i in range(0,len(BCtensorList[bct]),1):
+            stan[i,:] = (BCtensorList[bct][i,:]-meanList[bct])/stdList[bct]
+        stanBCList.append(stan)
+    if os.path.exists("stdData.txt"):
+        os.remove("stdData.txt")
+    stdfile = open("stdData.txt", "a")
+    for line in range(len(stdList)):
+        stdfile.write(str(stdList[line]))
+        stdfile.write("\n")
+    stdfile.close()
+    if os.path.exists("meanData.txt"):
+        os.remove("meanData.txt")
+    meanfile = open("meanData.txt", "a")
+    for line in range(len(meanList)):
+        meanfile.write(str(meanList[line]))
+        meanfile.write("\n")
+    meanfile.close()
+    # stanBCList = [stanui, stanuo, stanTi, stanTo, stanpi, stanpo] # boundary  
+    stanBCListNames = ["stanui", "stanuo", "stanTi", "stanTo", "stanpi", "stanpo"] # boundary  
+    return x, stanBCList, stanBCListNames, BCtensorList, xsd, xmean, feat

@@ -13,15 +13,13 @@ def RunSalome(Amp, WaveL, xEl, NewPath):
     AWfile = open("SalomeGeom.py")
     AWstring = AWfile.readlines()
     AWfile.close()
-    AWstring[33] ="Curve_wall = geompy.MakeCurveParametric('t', '-"+str(Amp)+"*cos(t*"+str(WaveL)+"*pi)+0.2+"+str(Amp)+"-0.000005','0.05',0.0,2.0,"+str(xEl)+",GEOM.Polyline,theNewMethod = True)\n"
+    AWstring[34] ="Curve_wall = geompy.MakeCurveParametric('t', '-"+str(Amp)+"*cos(t*"+str(WaveL)+"*pi)+0.2+"+str(Amp)+"-0.00013','0.05',0.0,2.0,"+str(xEl)+",GEOM.Polyline,theNewMethod = True)\n"
     AWfile = open("SalomeGeom.py", "w")
     newAWcont = "".join(AWstring)
     AWfile.write(newAWcont)
     AWfile.close()
     # Make a subprocess call to execute salome with the SalomeGeom.py script
     subprocess.call(['./../../SALOME-9.7.0-native-UB20.04-SRC/salome -t python SalomeGeom.py'], shell=True)
-    
-    # Move the STL file to the corresponding folder
     shutil.move("/media/dani/Data/Ubuntufiles/ProperThermoProp/worklineMacro/HeliumRegion.stl", NewPath + "/HeliumRegion.stl")
-    
+
     print("Geometry succesfully created and moved to the new directory...")

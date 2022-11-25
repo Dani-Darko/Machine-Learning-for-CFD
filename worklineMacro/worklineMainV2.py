@@ -29,7 +29,6 @@ from importlib import reload
 import torch
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from matplotlib import rc
 
 # Call for all the subfunctions needed from the rest of the scripts
 import ParametrizationWL
@@ -119,16 +118,22 @@ elif Param == "Nerves":
 # Create a list with both old & new data sampling
 # OpenFOAMRun.RunOpenFOAMHPC(path)
 
-
-
+newxin = np.loadtxt("Xnew.txt", delimiter=',')
+# # stanBCList = [stanui, stanuo, stanTi, stanTo, stanpi, stanpo]
+x, stanBCList, stanBCListNames, BCtensorList, xsd, xmean, feat = NeuralNetwork.DataQoI2(newxin[:,:2], path)
+newx = np.empty([len(newxin[:,0]),len(newxin[0,:2])])
+for xj in range(len(newxin[0,:2])):
+    for xi in range(len(newxin[:,0])):
+        newx[xi,xj] = (newxin[xi,xj]-xmean[xj])/xsd[xj]
+newx = torch.from_numpy(newx)
 
 # Create the tensors from the old & new database for the NN
-x, stanBCList, stanBCListNames, BCtensorList, xsd, xmean, feat = NeuralNetwork.DataDoF(path)
+# x, stanBCList, stanBCListNames, BCtensorList, xsd, xmean, feat = NeuralNetwork.DataDoF(path)
 QP, QT = QoI.QoIWL(x, BCtensorList, stanBCListNames, xsd, xmean, feat)
 
 # How many iterations the neural networks will use to train
 # epochs = int(input("Number of epoch for the Networks training: "))
-epochs = 5000
+epochs = 20000
 print("Number of epoch for the Networks training: ", epochs)
 
 for stanBCi in range(0,len(stanBCList)):
@@ -136,15 +141,14 @@ for stanBCi in range(0,len(stanBCList)):
     modes, x_train, x_valid, stanBC_train, stanBC_valid, Tr_train, Tr_valid = NeuralNetwork.DataSVD(x, stanBCList[stanBCi], stanBCListNames[stanBCi])
     
     # Run the neural network training update
-#     NeuralNetwork.UpdateParametersSVD(feat, stanBCListNames[stanBCi], epochs, modes, x_train, x_valid, Tr_train, Tr_valid)
-#     NeuralNetwork.UpdateParametersDoF(feat, stanBCListNames[stanBCi], epochs, x_train, x_valid, stanBC_train, stanBC_valid)
-#     NeuralNetwork.UpdateParametersRBF(stanBCListNames[stanBCi], modes, x_train, x_valid, Tr_train, Tr_valid)
-#     NeuralNetwork.UpdateParametersKriging(stanBCListNames[stanBCi], modes, x, BCtensorList[stanBCi], epochs)
-# NeuralNetwork.UpdateParametersQoI(feat, QP, epochs, x, "Pressure")
-# NeuralNetwork.UpdateParametersQoI(feat, QT, epochs, x, "Temperature")
+    NeuralNetwork.UpdateParametersSVD(feat, stanBCListNames[stanBCi], epochs, modes, x_train, x_valid, Tr_train, Tr_valid)
+    NeuralNetwork.UpdateParametersDoF(feat, stanBCListNames[stanBCi], epochs, x_train, x_valid, stanBC_train, stanBC_valid)
+    NeuralNetwork.UpdateParametersRBF(stanBCListNames[stanBCi], modes, x_train, x_valid, Tr_train, Tr_valid)
+    NeuralNetwork.UpdateParametersKriging(stanBCListNames[stanBCi], modes, x_train, x_valid, Tr_train, Tr_valid)
+NeuralNetwork.UpdateParametersQoI(feat, QP, epochs, x_train, x_valid, "Pressure")
+NeuralNetwork.UpdateParametersQoI(feat, QT, epochs, x_train, x_valid, "Temperature")
     
 print("En hora buena! Neural network parameters properly updated!")
-
 
 # Import the features data from a file
 SVDp = []
@@ -152,8 +156,8 @@ DOFp = []
 RBFp = []
 KQp = []
 newxin = np.loadtxt("Xnew.txt", delimiter=',')
-newx = np.empty([len(newxin[:,0]),len(newxin[0,:])])
-for xj in range(len(newxin[0,:])):
+newx = np.empty([len(newxin[:,0]),len(newxin[0,:2])])
+for xj in range(len(newxin[0,:2])):
     for xi in range(len(newxin[:,0])):
         newx[xi,xj] = (newxin[xi,xj]-xmean[xj])/xsd[xj]
 newx = torch.from_numpy(newx)
@@ -167,59 +171,59 @@ for stanBCi in range(0,len(stanBCList)):
     DOFp.append(PredictionWL.PredsDoF(newx, stanBCListNames[stanBCi], hidden_sizes, feat, len(BCtensorList[4][0,:]), xsd, xmean, std[stanBCi], mean[stanBCi]))
     RBFp.append(PredictionWL.PredsRBF(newx, stanBCListNames[stanBCi], xsd, xmean, modes, std[stanBCi], mean[stanBCi]))
     KQp.append(PredictionWL.PredsKriging(newx, stanBCListNames[stanBCi], xsd, xmean, modes, std[stanBCi], mean[stanBCi]))
-nNNQP, NNQP = PredictionWL.PredsQoI(newx, "Pressure", hidden_sizes, feat, 1, xmean, xsd)
-nNNQT, NNQT = PredictionWL.PredsQoI(newx, "Temperature", hidden_sizes, feat, 1, xmean, xsd)
-
+NNQP = PredictionWL.PredsQoI(newx, "Pressure", hidden_sizes, feat, 1, xmean, xsd)
+NNQT = PredictionWL.PredsQoI(newx, "Temperature", hidden_sizes, feat, 1, xmean, xsd)
+xlists =[]
+for i in range(2):
+    xlist = list(dict.fromkeys(newxin[1:,i]))
+    xlists.append(xlist)
+X, Y = np.meshgrid(xlists[0], xlists[1])
 stanBCList1, stanBCListNames1, BCtensorList1 = NeuralNetwork.DataQoI(newxin, path)
 newQP, newQT = QoI.QoIWL(newx, BCtensorList1, stanBCListNames1, xsd, xmean, feat)
 
-xlists =[]
-newxin1, newx1 = newxin[:,:], newx[:,:]
-newxin1[:,1], newx1[:,1] = newxin[:,2], newx[:,2]
-newxin1[:,0], newx1[:,0] = newxin[:,0], newx[:,0]
-for i in range(2):
-    xlist = list(dict.fromkeys(newxin1[1:,i]))
-    xlists.append(xlist)
-X, Y = np.meshgrid(xlists[0], xlists[1])
+fig_pathProf = '../SVDdata/QoI/TprofilePreds.eps'
+plt.plot(SVDp[3][-2,:])
+plt.plot(DOFp[3][-2,:])
+plt.plot(RBFp[3][-2,:])
+plt.plot(KQp[3][-2,:])
+plt.xticks(fontsize=10)
+plt.yticks(fontsize=10)
+plt.grid(color="0.8", linewidth=0.5) 
+# plt.xlabel("Rawdatapoint", size=14)
+plt.ylabel("Temperature [K]", size=14)
+plt.savefig(fig_pathProf, bbox_inches='tight', format='eps')
+plt.close()
 
 print("Calculating quantities of interest...")
 # Calculate the quantity of interest
-gridQP, gridQT = QoI.gridQoI(xlists, newxin1[:,0:2], newQP, newQT, xsd, xmean)
-gridSVDQP, gridSVDQT, SVDQP, SVDQT = QoI.calcQoI(xlists, newx1[:,:2], newxin1[:,:2], SVDp, xsd, xmean)
-gridDOFQP, gridDOFQT, DOFQP, DOFQT = QoI.calcQoI(xlists, newx1[:,:2], newxin1[:,:2], DOFp, xsd, xmean)
-gridRBFQP, gridRBFQT, RBFQP, RBFQT = QoI.calcQoI(xlists, newx1[:,:2], newxin1[:,:2], RBFp, xsd, xmean)
-gridKQP, gridKQT, KQP, KQT = QoI.calcQoI(xlists, newx1[:,0:2], newxin1[:,0:2], KQp, xsd, xmean)
-gridNNQP, gridNNQT = QoI.gridQoI(xlists, newxin1[:,0:2], nNNQP, nNNQT, xsd, xmean)
+gridQP, gridQT = QoI.gridQoI(xlists, newxin[:,0:2], newQP, newQT, xsd, xmean)
+gridSVDQP, gridSVDQT, SVDQP, SVDQT = QoI.calcQoI(xlists, newx[:,0:2], newxin[:,0:2], SVDp, xsd, xmean)
+gridDOFQP, gridDOFQT, DOFQP, DOFQT = QoI.calcQoI(xlists, newx[:,0:2], newxin[:,0:2], DOFp, xsd, xmean)
+gridRBFQP, gridRBFQT, RBFQP, RBFQT = QoI.calcQoI(xlists, newx[:,0:2], newxin[:,0:2], RBFp, xsd, xmean)
+gridKQP, gridKQT, KQP, KQT = QoI.calcQoI(xlists, newx[:,0:2], newxin[:,0:2], KQp, xsd, xmean)
+gridNNQP, gridNNQT = QoI.gridQoI(xlists, newxin[:,0:2], NNQP, NNQT, xsd, xmean)
 gridQPp = [gridQP, gridSVDQP, gridDOFQP, gridRBFQP, gridNNQP, gridKQP]
 gridQTp = [gridQT, gridSVDQT, gridDOFQT, gridRBFQT, gridNNQT, gridKQT]
 QPp = [newQP, SVDQP, DOFQP, RBFQP, NNQP, KQP]
 QTp = [newQT, SVDQT, DOFQT, RBFQT, NNQT, KQT]
-contName = ["Simulation","NN SVD", "NN raw data", "RBF", "NN quantity of interest", "Kriging"]
-    
-index = [0, 0, 1, 1, 2, 2]
-indey = [0, 1, 0, 1, 0, 1]
-rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
-rc('text', usetex=True)
-print("Plotting contours for quantities of interest...")
+contName = ["Sims","SVD", "DOF", "RBF", "NNQ", "Kriging"]
+
 wpars = np.arange(0,1.25,0.25)
-for wpar in wpars:
-    fig_path = '../SVDdata/cont_'+str(wpar).replace('.', '-')+'.pdf'
-    fig_path2 = '../SVDdata/cont_'+str(wpar).replace('.', '-')+'.png'
-    fig, ax = plt.subplots(3,2, sharex=True, sharey=True, figsize=(10,10), constrained_layout=True)
-    plt.xticks(fontsize=10)
-    plt.yticks(fontsize=10)
-    for Qi in range(6):
-        cont = (1 - wpar)*gridQPp[Qi] - wpar*gridQTp[Qi]
-        scat = (1 - wpar)*QPp[Qi] - wpar*QTp[Qi]
-        surf = ax[index[Qi],indey[Qi]].contourf(X, Y, cont, cmap=cm.jet)
-        ax[index[Qi],indey[Qi]].plot(newxin1[1:,0], newxin1[1:,1], 'k.')
-        ax[index[Qi],indey[Qi]].axis('on')
-        ax[index[Qi],indey[Qi]].set_title(f"{contName[Qi]}", size=14)
-    ax[-1,0].set_xlabel('Amplitude $A_1$', size=14)
-    ax[-1,0].xaxis.set_label_coords(1.1, -0.15)
-    ax[1,0].set_ylabel('Wavelength $\omega_1$', size=14)
-    fig.colorbar(surf, ax=ax[-1,:], location='bottom', pad = 0.25)
-    plt.savefig(fig_path, bbox_inches='tight', format='pdf')
-    plt.savefig(fig_path2, bbox_inches='tight', format='png')
-    fig.canvas.draw()
-    plt.close()
+for Qi in range(6):
+    for wpar in wpars:
+        cont = wpar*gridQTp[Qi] - (1 - wpar)*gridQPp[Qi]
+        scat = wpar*QTp[Qi] - (1 - wpar)*QPp[Qi]
+        fig_path = '../SVDdata/cont'+contName[Qi]+'_'+str(wpar).replace('.', '-')+'.eps'
+        fig, ax = plt.subplots()
+        # surf = ax.contour(X, Y, cont, cmap=cm.jet, linewidth=0.1)
+        surf = ax.contourf(X, Y, cont, cmap=cm.jet)
+        # ax.scatter(newxin[1:,0], newxin[1:,1], scat[1:])
+        plt.plot(newxin[1:,0], newxin[1:,1], 'k.')
+        fig.colorbar(surf, shrink=0.5, aspect=10)
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
+        ax.set_xlabel("Amplitude", size=14)
+        ax.set_ylabel("Wavelength", size=14)
+        ax.set_title(f"Thermohydraulic energy flux for w = {wpar}", size=14)
+        plt.savefig(fig_path, bbox_inches='tight', format='eps')
+        plt.close()
